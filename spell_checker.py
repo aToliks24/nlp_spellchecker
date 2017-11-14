@@ -1,4 +1,43 @@
+import re
 
+def linsplitter(files):
+    rgx1 = r'(?<=\w)[\x2e\x2d](?=\w)'  #U.S.A | key-word
+    rgx2=r'[a-zA-Z]'
+    ptrn=re.compile(rgx2)
+    files=re.sub(rgx1,'',files)
+    res1=files.splitlines()
+    res=[]
+    mapping = {'"':' ','?': ' ?', '!': ' !','-':' ',',':' '}
+    for r in res1:
+        for k, v in mapping.iteritems():
+            r1 = r.replace(k, v)
+            if ptrn.search(r1):
+                res.append(r.lower())
+    return res
+
+def ngrams(words, n):
+  res = []
+  grm=words[0]
+  for i in range(1,n):
+    grm+=' '+words[i]
+    res.append(grm)
+  for i in range(len(words)-n+1):
+    res.append(words[i:i + n])
+  return res
+
+def addToDict(ngramdict, grm):
+    lst=grm.split(' ')
+    k=lst[-1]
+    v=lst[0:-1]
+    if k in ngramdict:
+        if v in ngramdict[k]:
+            ngramdict[k][v]+=1
+        else:
+            ngramdict[k][v]=1
+    else:
+        ngramdict[k]=dict()
+        ngramdict[k][v]=1
+    return ngramdict
 
 def learn_language_model(files, n=3, lm=None):
     """ Returns a nested dictionary of the language model based on the
@@ -32,8 +71,17 @@ def learn_language_model(files, n=3, lm=None):
     Returns:
         dict: a nested dict {str:{str:int}} of ngrams and their counts.
     """
-
-    return ngrams
+    if lm==None:
+        res=dict()
+    else:
+        res=lm
+    sentences=linsplitter(files)
+    for s in sentences:
+        words=s.split(' ')
+        ngrms=ngrams(words,n)
+        for grm in ngrms:
+            res=addToDict(res, grm)
+    return res
 
 def create_error_distribution(errors_file, lexicon):
     """ Returns a dictionary {str:dict} where str is in:
