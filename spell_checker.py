@@ -1,4 +1,15 @@
 import re
+import time
+from enum import Enum
+class MistakeType(Enum):
+    Deletion=0
+    Insertion=1
+    Substitution=2
+    Transposition=3
+
+global MAX_MISTAKES_IN_WORD
+
+
 
 def linsplitter(files):
     rgx1 = r'(?<=\w)[\x2e\x2d](?=\w)'  #U.S.A | key-word
@@ -83,6 +94,57 @@ def learn_language_model(files, n=3, lm=None):
             res=addToDict(res, grm)
     return res
 
+
+def getMistake(tup):
+    mis=tup[0]
+    tru=tup[1]
+    global MAX_MISTAKES_IN_WORD
+    lst=recGetMistake(mis,tru,0)#list[tup(errTypeList, errTupList)*]
+    return lst
+
+def recGetMistake(mis,tru,i):
+    if i>MAX_MISTAKES_IN_WORD :
+        return [None]
+    elif len(mis)==len(tru)==0:
+        return []
+    elif mis=="":
+        if i+len(tru)>MAX_MISTAKES_IN_WORD:
+            return [None]
+        else:
+            res=[]
+            for c in tru:
+                res.append((MistakeType.Deletion,(c,'-')))
+            return res
+    elif tru=="":
+        if i + len(mis) > MAX_MISTAKES_IN_WORD:
+            return [None]
+        else:
+            res = []
+            for c in mis:
+                res.append((MistakeType.Insertion, ('-', c)))
+            return res
+    elif mis[0]==tru[0]:
+            return recGetMistake(mis[1:],tru[1:],i)
+    else: #check errorType
+        subslist=[(MistakeType.Substitution,(tru[0],mis[0]))]+recGetMistake(mis[1:],tru[1:],i+1)
+        inserlist=[(MistakeType.Insertion,('-',mis[0]))]+recGetMistake(mis[1:],tru,i+1)
+        dellist=[(MistakeType.Deletion,(tru[0],'-'))]+recGetMistake(mis,tru[1:],i+1)
+        translist=[None]
+        if len(tru)>1 and len(mis)>1 and tru[0]==mis[1] and tru[1]==mis[0]:
+            translist=[(MistakeType.Transposition,(tru[0:2],mis[0:2]))]+recGetMistake(mis[2:],tru[2:],i+1)
+        alllist=[subslist,inserlist,dellist,translist]
+        res=None
+        for i in range(len(alllist)):
+            if alllist[0][-1]!=None:
+                if res==None:
+                    res=alllist[0]
+                elif len(res)>len(alllist[0]):
+                    res=alllist[0]
+            alllist = alllist[1:]
+        if res==None:
+            res=[None]
+        return res
+
 def create_error_distribution(errors_file, lexicon):
     """ Returns a dictionary {str:dict} where str is in:
     <'deletion', 'insertion', 'transposition', 'substitution'> and the inner dict {tupple: float} represents the confution matrix of the specific errors
@@ -103,7 +165,48 @@ def create_error_distribution(errors_file, lexicon):
         A dictionary of error distributions by error type (dict).
 
     """
+    mistakesDict={
+    MistakeType.Insertion:dict(),
+    MistakeType.Deletion:dict(),
+    MistakeType.Substitution:dict(),
+    MistakeType.Transposition:dict()
+    }
+    errCount=0
+    f=open(errors_file,'r')
+    wholeFile=f.read().lower().split('\n')
+    f.close()
+    separated=[]
+    for str in wholeFile:
+        if '->' not in str:
+            continue
+        tup = str.split('->')
+        if ',' in tup[1]:
+            multiple=tup[1].split(',')
+            for s in multiple:
+                separated.append((tup[0].strip(),s.strip()))
+        else:
+            separated.append((tup[0].strip(),tup[1].strip()))
 
+    for tup in separated:
+        errTups=getMistake(tup)
+        for curr in errTups:
+            errCount+=1
+            errTup=curr[1]
+            errType=curr[0]
+            if errTup in mistakesDict[errType].keys():
+                mistakesDict[errType][errTup]=mistakesDict[errType][errTup]+1
+            else:
+                mistakesDict[errType][errTup]=1
+t1 = time.time()
+print(t1)
+path=r'C:\Users\tolik\Desktop\wikipedia_common_misspellings.txt'
+create_error_distribution(path,None)
+t2 = time.time()
+print(t2+'\n'+t2-t1)
+
+
+
+'''''
 def generate_text(lm, m=15, w=None):
     """ Returns a text of the specified length, generated according to the
      specified language model using the specified word (if given) as an anchor.
@@ -118,7 +221,7 @@ def generate_text(lm, m=15, w=None):
     """
 
 
-        lm:=language model, m:=length of generated text
+lm:=language model, m:=length of generated text
 evaluate_text(s,lm)   s=sentence, lm language model
 
 
@@ -169,3 +272,4 @@ def evaluate_text(s,lm):
     Returns:
         The likelihood of the sentence according to the language model (float).
     """
+'''
