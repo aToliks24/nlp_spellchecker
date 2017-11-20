@@ -280,7 +280,7 @@ print(t2)
 
 
 
-
+'''''
 def generate_text(lm, m=15, w=None):
     """ Returns a text of the specified length, generated according to the
      specified language model using the specified word (if given) as an anchor.
@@ -316,7 +316,7 @@ def correct_word(w, word_counts, errors_dist):
         The most probable correction (str).
     """
 
-
+'''''
 def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
 """ Returns the most probable sentence given the specified sentence, language
 model, error distributions, maximal number of suumed erroneous tokens and likelihood for non-error.
