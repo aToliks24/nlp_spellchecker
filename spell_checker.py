@@ -13,8 +13,6 @@ Transposition='transposition'
 def linsplitter(files):
     rgx1 = r'(?<=\w)[\x2e\x2d](?=\w)'  #U.S.A | key-word
     rgx2=r'[^a-zA-Z\x2e\x27\x20\n]'
-
-
     files = re.sub(rgx1, "", files)
     files=re.sub(rgx2,"",files)
     files=re.sub("\n+"," ",files)
@@ -82,7 +80,7 @@ def learn_language_model(files, n=3, lm=None):
     """
     fstr=""
     for p in files:
-        f=open(p,'r')
+        f=open(p,'r',encoding='utf8')
         fstr=fstr+f.read()
         f.close()
 
@@ -100,13 +98,13 @@ def learn_language_model(files, n=3, lm=None):
 #endregion
 
 # region create_error_distribution
-MAX_MISTAKES_IN_WORD=3
+MAX_MISTAKES_IN_WORD=5
 
 
 def delition(cp_m_1, cp,mistakesCountDict,charactersCountDict):
     if (cp_m_1 , cp) not in mistakesCountDict[Deletion] or cp_m_1 + cp not in charactersCountDict:
         return 0
-    return (mistakesCountDict[Deletion][(cp_m_1 , cp)],charactersCountDict) / (charactersCountDict[cp_m_1 + cp])
+    return mistakesCountDict[Deletion][(cp_m_1 , cp)] / charactersCountDict[cp_m_1 + cp]
 def insertion(cp_m_1, tp,mistakesCountDict,charactersCountDict):
     if (cp_m_1 , tp) not in mistakesCountDict[Deletion] or cp_m_1 not in charactersCountDict:
         return 0
@@ -213,8 +211,12 @@ def create_error_distribution(errors_file, lexicon):
 
     charactersCountDict = dict()
 
-    f=open(errors_file,'r')
-    wholeFile=f.read().lower().split('\n')
+    f=open(errors_file,'r',encoding='utf8')
+    wholeFile=f.read()
+    wholeFile=wholeFile.lower()
+    wholeFile = re.sub(r'[^a-zA-Z\x20\x3e\x2d\n]',"", wholeFile)
+    wholeFile = wholeFile.split('\n')
+
     f.close()
     separated = errFileToTupleList(wholeFile)
 
@@ -307,8 +309,8 @@ def correct_word(w, word_counts, errors_dist):
     """
     candidates=dict()
 
-    for word,count in word_counts:
-        mis=getMistake(w,word)
+    for word,count in word_counts.items():
+        mis=getMistake((w,word))
         if(len(mis)==1):
             candidates[word]=errors_dist[mis[0]]*count
         best=None
@@ -367,12 +369,10 @@ def evaluate_text(s,lm):
 '''''
 
 def getwords(lex):
-    f=open(lex,'r')
-    str=f.read().lower()
-    filtered=re.findall('[a-z\x27\x2d]+',str)
+    lm=learn_language_model(lex,n=1)
     words=dict()
-    for word in filtered:
-        insertToCountDict(word,words)
+    for word in lm.keys():
+        words[word]=lm[word][""]
     return words
 
 
@@ -380,15 +380,17 @@ t1 = time.time()
 print(t1)
 #path=r'C:\Users\tolik\Desktop\wikipedia_common_misspellings.txt'
 #lex=r'C:\Users\tolik\Desktop\sharlock.txt'
-lex=r'/Users/toliks/Desktop/big.txt'
+lexpath=r'/Users/toliks/Desktop/big.txt'
 path=r'/Users/toliks/Desktop/wikipedia_common_misspellings.txt'
 
 
 
 
-#lexicon=getwords(lex)
-#create_error_distribution(path,lexicon)
-learn_language_model([lex],n=5)
+lex=getwords([lexpath])
+ed=create_error_distribution(path,lex)
+#lm=learn_language_model([lexpath],n=3)
+w1=correct_word("abandong",lex,ed)
+w2=correct_word("udventur",lex,ed)
 t2 = time.time()
 print(str(t2)+'\n')
 t2=t2-t1
