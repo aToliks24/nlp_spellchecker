@@ -1,51 +1,38 @@
 import re
 import time
 from enum import Enum
-
+import pandas
 Deletion='deletion'
 Insertion='insertion'
 Substitution='substitution'
 Transposition='transposition'
 
-mistakesProbDict = {
-    Insertion: dict(),
-    Deletion: dict(),
-    Substitution: dict(),
-    Transposition: dict()
-}
-mistakesCountDict = {
-    Insertion: dict(),
-    Deletion: dict(),
-    Substitution: dict(),
-    Transposition: dict()
-}
 
-charactersCountDict = dict()
 
 MAX_MISTAKES_IN_WORD=3
 
 
-def delition(cp_m_1, cp):
+def delition(cp_m_1, cp,mistakesCountDict,charactersCountDict):
     if (cp_m_1 , cp) not in mistakesCountDict[Deletion] or cp_m_1 + cp not in charactersCountDict:
         return 0
-    return (mistakesCountDict[Deletion][(cp_m_1 , cp)]) / (charactersCountDict[cp_m_1 + cp])
-def insertion(cp_m_1, tp):
+    return (mistakesCountDict[Deletion][(cp_m_1 , cp)],charactersCountDict) / (charactersCountDict[cp_m_1 + cp])
+def insertion(cp_m_1, tp,mistakesCountDict,charactersCountDict):
     if (cp_m_1 , tp) not in mistakesCountDict[Deletion] or cp_m_1 not in charactersCountDict:
         return 0
     return mistakesCountDict[Insertion][(cp_m_1 , tp)] / charactersCountDict[cp_m_1]
-def substitution(tp,cp):
+def substitution(tp,cp,mistakesCountDict,charactersCountDict):
     if (tp , cp) not in mistakesCountDict[Deletion] or cp not in charactersCountDict:
         return 0
     return mistakesCountDict[Substitution][(tp , cp)] / charactersCountDict[cp]
-def transposition(cp,cp_p_1):
+def transposition(cp,cp_p_1,mistakesCountDict,charactersCountDict):
     if (cp , cp_p_1) not in mistakesCountDict[Deletion] or cp + cp_p_1 not in charactersCountDict:
         return 0
     return mistakesCountDict[Transposition][(cp,cp_p_1)] / charactersCountDict[cp+cp_p_1]
 
 funcDict={Insertion:insertion,Deletion:delition,Substitution:substitution,Transposition:transposition}
 
-def calculateProbability(type,a,b):
-    return funcDict[type](a,b)
+def calculateProbability(type,a,b,mistakesCountDict,charactersCountDict):
+    return funcDict[type](a,b,mistakesCountDict,charactersCountDict)
 
 def linsplitter(files):
     rgx1 = r'(?<=\w)[\x2e\x2d](?=\w)'  #U.S.A | key-word
@@ -204,7 +191,20 @@ def create_error_distribution(errors_file, lexicon):
         A dictionary of error distributions by error type (dict).
 
     """
+    mistakesProbDict = {
+        Insertion: dict(),
+        Deletion: dict(),
+        Substitution: dict(),
+        Transposition: dict()
+    }
+    mistakesCountDict = {
+        Insertion: dict(),
+        Deletion: dict(),
+        Substitution: dict(),
+        Transposition: dict()
+    }
 
+    charactersCountDict = dict()
 
     f=open(errors_file,'r')
     wholeFile=f.read().lower().split('\n')
@@ -226,8 +226,9 @@ def create_error_distribution(errors_file, lexicon):
     global mistakesProbDict
     for etype in mistakesCountDict.keys():
         for tup in mistakesCountDict[etype]:
-            p=calculateProbability(etype,tup[0],tup[1])
+            p=calculateProbability(etype,tup[0],tup[1],mistakesCountDict,charactersCountDict)
             mistakesProbDict[etype][tup]=p
+    return mistakesProbDict
 
 
 def errFileToTupleList(wholeFile):
@@ -315,6 +316,21 @@ def correct_word(w, word_counts, errors_dist):
     Returns:
         The most probable correction (str).
     """
+    candidates=dict()
+
+    for word,count in word_counts:
+        mis=getMistake(w,word)
+        if(len(mis)==1):
+            candidates[word]=errors_dist[mis[0]]*count
+        best=None
+        for c in candidates.keys():
+            if best==None:
+                best=c
+            elif candidates[c]>candidates[best]:
+                best=c
+        return best
+
+
 
 '''''
 def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
