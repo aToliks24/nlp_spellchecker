@@ -8,68 +8,43 @@ Substitution='substitution'
 Transposition='transposition'
 
 
-
-MAX_MISTAKES_IN_WORD=3
-
-
-def delition(cp_m_1, cp,mistakesCountDict,charactersCountDict):
-    if (cp_m_1 , cp) not in mistakesCountDict[Deletion] or cp_m_1 + cp not in charactersCountDict:
-        return 0
-    return (mistakesCountDict[Deletion][(cp_m_1 , cp)],charactersCountDict) / (charactersCountDict[cp_m_1 + cp])
-def insertion(cp_m_1, tp,mistakesCountDict,charactersCountDict):
-    if (cp_m_1 , tp) not in mistakesCountDict[Deletion] or cp_m_1 not in charactersCountDict:
-        return 0
-    return mistakesCountDict[Insertion][(cp_m_1 , tp)] / charactersCountDict[cp_m_1]
-def substitution(tp,cp,mistakesCountDict,charactersCountDict):
-    if (tp , cp) not in mistakesCountDict[Deletion] or cp not in charactersCountDict:
-        return 0
-    return mistakesCountDict[Substitution][(tp , cp)] / charactersCountDict[cp]
-def transposition(cp,cp_p_1,mistakesCountDict,charactersCountDict):
-    if (cp , cp_p_1) not in mistakesCountDict[Deletion] or cp + cp_p_1 not in charactersCountDict:
-        return 0
-    return mistakesCountDict[Transposition][(cp,cp_p_1)] / charactersCountDict[cp+cp_p_1]
-
-funcDict={Insertion:insertion,Deletion:delition,Substitution:substitution,Transposition:transposition}
-
-def calculateProbability(type,a,b,mistakesCountDict,charactersCountDict):
-    return funcDict[type](a,b,mistakesCountDict,charactersCountDict)
+#region learn_language_model
 
 def linsplitter(files):
     rgx1 = r'(?<=\w)[\x2e\x2d](?=\w)'  #U.S.A | key-word
-    rgx2=r'[a-zA-Z]'
-    ptrn=re.compile(rgx2)
-    files=re.sub(rgx1,'',files)
+    rgx2=r'[^a-zA-Z\x2e\x27\x20\n]'
+
+
+    files = re.sub(rgx1, "", files)
+    files=re.sub(rgx2,"",files)
+    files=re.sub("\n+"," ",files)
+    files = re.sub(r"\x20+", "\x20", files)
+    files = re.sub(r"\x2e+", "\n", files)
     res1=files.splitlines()
     res=[]
-    mapping = {'"':' ','?': ' ?', '!': ' !','-':' ',',':' '}
     for r in res1:
-        for k, v in mapping.iteritems():
-            r1 = r.replace(k, v)
-            if ptrn.search(r1):
-                res.append(r.lower())
+        res.append(r.lower().strip())
     return res
 
 
 def ngrams(words, n):
-  res = []
-  grm=words[0]
-  for i in range(1,n):
-    grm+=' '+words[i]
-    res.append(grm)
-  for i in range(len(words)-n+1):
-    res.append(words[i:i + n])
-  return res
+    res=[]
+    for i in range(len(words)-n+1):
+        grm = []
+        for j in range(i,i+n):
+          grm.append(words[j])
+        res.append(grm)
+    return res
 
 
-def addToDict(ngramdict, grm):
-    lst=grm.split(' ')
-    k=lst[-1]
-    v=lst[0:-1]
+def addToMlDict(ngramdict, grm):
+    k=grm[0]
+    v=grm[1:]
     if k in ngramdict:
-        insertToCountDict(v,ngramdict[k])
+        insertToCountDict(' '.join(v),ngramdict[k])
     else:
         ngramdict[k]=dict()
-        ngramdict[k][v]=1
+        ngramdict[k][' '.join(v)]=1
     return ngramdict
 
 
@@ -105,18 +80,50 @@ def learn_language_model(files, n=3, lm=None):
     Returns:
         dict: a nested dict {str:{str:int}} of ngrams and their counts.
     """
+    fstr=""
+    for p in files:
+        f=open(p,'r')
+        fstr=fstr+f.read()
+        f.close()
+
     if lm==None:
         res=dict()
     else:
         res=lm
-    sentences=linsplitter(files)
+    sentences=linsplitter(fstr)
     for s in sentences:
         words=s.split(' ')
         ngrms=ngrams(words,n)
         for grm in ngrms:
-            res=addToDict(res, grm)
+            res=addToMlDict(res, grm)
     return res
+#endregion
 
+# region create_error_distribution
+MAX_MISTAKES_IN_WORD=3
+
+
+def delition(cp_m_1, cp,mistakesCountDict,charactersCountDict):
+    if (cp_m_1 , cp) not in mistakesCountDict[Deletion] or cp_m_1 + cp not in charactersCountDict:
+        return 0
+    return (mistakesCountDict[Deletion][(cp_m_1 , cp)],charactersCountDict) / (charactersCountDict[cp_m_1 + cp])
+def insertion(cp_m_1, tp,mistakesCountDict,charactersCountDict):
+    if (cp_m_1 , tp) not in mistakesCountDict[Deletion] or cp_m_1 not in charactersCountDict:
+        return 0
+    return mistakesCountDict[Insertion][(cp_m_1 , tp)] / charactersCountDict[cp_m_1]
+def substitution(tp,cp,mistakesCountDict,charactersCountDict):
+    if (tp , cp) not in mistakesCountDict[Deletion] or cp not in charactersCountDict:
+        return 0
+    return mistakesCountDict[Substitution][(tp , cp)] / charactersCountDict[cp]
+def transposition(cp,cp_p_1,mistakesCountDict,charactersCountDict):
+    if (cp , cp_p_1) not in mistakesCountDict[Deletion] or cp + cp_p_1 not in charactersCountDict:
+        return 0
+    return mistakesCountDict[Transposition][(cp,cp_p_1)] / charactersCountDict[cp+cp_p_1]
+
+funcDict={Insertion:insertion,Deletion:delition,Substitution:substitution,Transposition:transposition}
+
+def calculateProbability(type,a,b,mistakesCountDict,charactersCountDict):
+    return funcDict[type](a,b,mistakesCountDict,charactersCountDict)
 
 def getMistake(tup):
     mis='^'+tup[0]
@@ -223,7 +230,6 @@ def create_error_distribution(errors_file, lexicon):
         for i in range(len(word)-1):
             c=word[i]+word[i+1]
             insertToCountDict(c,charactersCountDict)
-    global mistakesProbDict
     for etype in mistakesCountDict.keys():
         for tup in mistakesCountDict[etype]:
             p=calculateProbability(etype,tup[0],tup[1],mistakesCountDict,charactersCountDict)
@@ -251,37 +257,16 @@ def insertToCountDict(key, charactersCountDict):
         charactersCountDict[key] += 1
     else:
         charactersCountDict[key] = 1
+# endregion
 
 
-def getwords(lex):
-    f=open(lex,'r')
-    str=f.read().lower()
-    filtered=re.findall('[a-z\x27\x2d]+',str)
-    words=dict()
-    for word in filtered:
-        insertToCountDict(word,words)
-    return words
+##TODO
+#region generate_text
+
+def getDistributedWords(lm):
+    pass
 
 
-t1 = time.time()
-print(t1)
-path=r'C:\Users\tolik\Desktop\wikipedia_common_misspellings.txt'
-lex=r'C:\Users\tolik\Desktop\sharlock.txt'
-
-
-
-
-
-lexicon=getwords(lex)
-create_error_distribution(path,lexicon)
-t2 = time.time()
-print(str(t2)+'\n')
-t2=t2-t1
-print(t2)
-
-
-
-'''''
 def generate_text(lm, m=15, w=None):
     """ Returns a text of the specified length, generated according to the
      specified language model using the specified word (if given) as an anchor.
@@ -297,10 +282,14 @@ def generate_text(lm, m=15, w=None):
     lm:=language model, m:=length of generated text
     evaluate_text(s,lm)   s=sentence, lm language model
     """
+    lisOfWords=getDistributedWords(lm)
 
 
 
-'''''
+#endregion  #
+
+##TODO to check
+#region correct_word
 def correct_word(w, word_counts, errors_dist):
     """ Returns the most probable correction for the specified word, given the specified prior error distribution.
 
@@ -329,9 +318,12 @@ def correct_word(w, word_counts, errors_dist):
             elif candidates[c]>candidates[best]:
                 best=c
         return best
+#endregion
 
 
 
+##TODO
+#region evaluate_text
 '''''
 def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
 """ Returns the most probable sentence given the specified sentence, language
@@ -351,6 +343,12 @@ Returns:
     The most probable sentence (str)
 
 """
+
+'''
+#endregion
+
+
+
 '''
 def evaluate_text(s,lm):
     """ Returns the likelihood of the specified sentence to be generated by the
@@ -363,3 +361,35 @@ def evaluate_text(s,lm):
     Returns:
         The likelihood of the sentence according to the language model (float).
     """
+
+
+
+'''''
+
+def getwords(lex):
+    f=open(lex,'r')
+    str=f.read().lower()
+    filtered=re.findall('[a-z\x27\x2d]+',str)
+    words=dict()
+    for word in filtered:
+        insertToCountDict(word,words)
+    return words
+
+
+t1 = time.time()
+print(t1)
+#path=r'C:\Users\tolik\Desktop\wikipedia_common_misspellings.txt'
+#lex=r'C:\Users\tolik\Desktop\sharlock.txt'
+lex=r'/Users/toliks/Desktop/big.txt'
+path=r'/Users/toliks/Desktop/wikipedia_common_misspellings.txt'
+
+
+
+
+#lexicon=getwords(lex)
+#create_error_distribution(path,lexicon)
+learn_language_model([lex],n=5)
+t2 = time.time()
+print(str(t2)+'\n')
+t2=t2-t1
+print(t2)
