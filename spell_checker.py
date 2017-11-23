@@ -1,8 +1,7 @@
 import re
 import time
 from pickle import dump,load
-from enum import Enum
-import pandas
+
 Deletion='deletion'
 Insertion='insertion'
 Substitution='substitution'
@@ -37,10 +36,10 @@ def ngrams(words, n):
 
 
 def addToMlDict(ngramdict, grm):
-    k=grm[0]
-    v=grm[1:]
+    k=grm[-1]
+    v=grm[0:-1]
     if k in ngramdict:
-        insertToCountDict(' '.join(v),ngramdict[k])
+        insertToCountDict(' '.join(v).strip(),ngramdict[k])
     else:
         ngramdict[k]=dict()
         ngramdict[k][' '.join(v)]=1
@@ -91,10 +90,12 @@ def learn_language_model(files, n=3, lm=None):
         res=lm
     sentences=linsplitter(fstr)
     for s in sentences:
-        words=s.split(' ')
+        words=[""]*(n-1)+s.split(' ')
         ngrms=ngrams(words,n)
         for grm in ngrms:
             res=addToMlDict(res, grm)
+    for k0 in res.keys(): #smoothing
+            res[k0][1]+=1
     return res
 #endregion
 
@@ -220,11 +221,8 @@ def create_error_distribution(errors_file, lexicon):
 
     f=open(errors_file,'r',encoding='utf8')
     wholeFile=f.read()
-    wholeFile=wholeFile.lower()
-    wholeFile = re.sub(r'[^a-zA-Z\x20\x3e\x2d\n]',"", wholeFile)
-    wholeFile = wholeFile.split('\n')
-
     f.close()
+    wholeFile = normalizeText(wholeFile)
     separated = errFileToTupleList(wholeFile)
 
     for tup in separated:
@@ -244,6 +242,13 @@ def create_error_distribution(errors_file, lexicon):
             p=calculateProbability(etype,tup[0],tup[1],mistakesCountDict,charactersCountDict)
             mistakesProbDict[etype][tup]=p
     return mistakesProbDict
+
+
+def normalizeText(text):
+    text = text.lower()
+    text = re.sub(r'[^a-zA-Z\x20\x3e\x2d\n]', "", text)
+    text = text.split('\n')
+    return text
 
 
 def errFileToTupleList(wholeFile):
@@ -268,38 +273,6 @@ def insertToCountDict(key, charactersCountDict):
         charactersCountDict[key] = 1
 # endregion
 
-
-##TODO
-#region generate_text
-
-def getDistributedWords(lm):
-    lm=learn_language_model(lex,n=1)
-    words=dict()
-    for word in lm.keys():
-        words[word]=lm[word][""]
-    return words
-
-
-def generate_text(lm, m=15, w=None):
-    """ Returns a text of the specified length, generated according to the
-     specified language model using the specified word (if given) as an anchor.
-
-     Args:
-        lm (dict): language model used to generate the text.
-        m (int): length (num of words) of the text to generate (default 15).
-        w (str): a word to start the text with (default None)
-
-    Returns:
-        A sequrnce of generated tokens, separated by white spaces (str)
-
-    lm:=language model, m:=length of generated text
-    evaluate_text(s,lm)   s=sentence, lm language model
-    """
-    lisOfWords=getDistributedWords(lm)
-
-
-
-#endregion  #
 
 #region correct_word
 def correct_word(w, word_counts, errors_dist):
@@ -350,10 +323,55 @@ def getCandidates(errors_dist, w, word_counts):
 #endregion
 
 
+##TODO
+#region generate_text
+
+def getDistributedWords(lexpath):
+    lm=learn_language_model(lexpath,n=1)
+    words=dict()
+    for word in lm.keys():
+        words[word]=lm[word][""]
+    return words
+
+
+def generate_text(lm, m=15, w=None):
+    """ Returns a text of the specified length, generated according to the
+     specified language model using the specified word (if given) as an anchor.
+
+     Args:
+        lm (dict): language model used to generate the text.
+        m (int): length (num of words) of the text to generate (default 15).
+        w (str): a word to start the text with (default None)
+
+    Returns:
+        A sequrnce of generated tokens, separated by white spaces (str)
+
+    lm:=language model, m:=length of generated text
+    evaluate_text(s,lm)   s=sentence, lm language model
+    """
+    lisOfWords=getDistributedWords(lm)
+
+
+
+#endregion  #
+
 
 ##TODO
 #region evaluate_text
-'''''
+
+
+
+def getSizeOfLM(lm):
+    counter=30
+    n=1
+    for k in lm.keys():
+        sz=len(lm[k].split())
+        if sz>n :
+            n=sz
+        counter-=1
+        if counter<=0:
+            break
+    return n
 
 
 def evaluate_text(s,lm):
@@ -363,38 +381,47 @@ def evaluate_text(s,lm):
     Args:
         s (str): the sentence to evaluate.
         lm (dict): the language model to evaluate the sentence by.
-
+    🐻🐼🐰🦃
     Returns:
         The likelihood of the sentence according to the language model (float).
+    """
+    n=getSizeOfLM(lm)
+    slm=learn_language_model([s], n)
+    res=1
+    for k,v in slm:
+        if k in lm.keys():
+            res*=v
+    return res;
+
+
+
+
+#endregion
+
+##TODO
+#region correct_sentence
+
+def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
+    """ Returns the most probable sentence given the specified sentence, language
+    model, error distributions, maximal number of suumed erroneous tokens and likelihood for non-error.
+
+    Args:
+        s (str): the sentence to correct.
+        lm (dict): the language model to correct the sentence accordingly.
+        err_dist (dict): error distributions according to error types
+                        (as returned by create_error_distribution() ).
+        c (int): the maximal number of tokens to change in the specified sentence.
+                 (default: 2)
+        alpha (float): the likelihood of a lexical entry to be the a correct word.
+                        (default: 0.95)
+
+    Returns:
+        The most probable sentence (str)
+
     """
 
 
 
-'''''
-#endregion
-
-
-#region correct_sentence
-'''''
-def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
-""" Returns the most probable sentence given the specified sentence, language
-model, error distributions, maximal number of suumed erroneous tokens and likelihood for non-error.
-
-Args:
-    s (str): the sentence to correct.
-    lm (dict): the language model to correct the sentence accordingly.
-    err_dist (dict): error distributions according to error types
-                    (as returned by create_error_distribution() ).
-    c (int): the maximal number of tokens to change in the specified sentence.
-             (default: 2)
-    alpha (float): the likelihood of a lexical entry to be the a correct word.
-                    (default: 0.95)
-
-Returns:
-    The most probable sentence (str)
-
-"""
-'''
 #endregion
 
 #region testing
@@ -408,7 +435,11 @@ path=r'/Users/toliks/Desktop/wikipedia_common_misspellings.txt'
 
 
 def dumpDicts():
-    lex = getwords([lexpath])
+    lm = learn_language_model([lexpath], n=3)
+    flm = open(r'/Users/toliks/Desktop/flm.bin', 'wb')
+    dump(lm, flm)
+    flm.close()
+    lex = getDistributedWords([lexpath])
     flex = open(r'/Users/toliks/Desktop/lex.bin', 'wb')
     dump(lex, flex)
     flex.close()
@@ -416,10 +447,7 @@ def dumpDicts():
     fed = open(r'/Users/toliks/Desktop/fed.bin', 'wb')
     dump(ed, fed)
     fed.close()
-    lm = learn_language_model([lexpath], n=3)
-    flm = open(r'/Users/toliks/Desktop/flm.bin', 'wb')
-    dump(lm, flm)
-    flm.close()
+
 
 def loadDicts():
     flex = open(r'/Users/toliks/Desktop/lex.bin', 'rb')
@@ -432,19 +460,19 @@ def loadDicts():
     lm = load(flm)
     flm.close()
     return lex,ed,lm
-#dumpDicts()
+dumpDicts()
 
-lex,ed,lm=loadDicts()
-
-
+#lex,ed,lm=loadDicts()
 
 
-w1=correct_word("abandong",lex,ed)
-print(w1)
-w2=correct_word("udventur",lex,ed)
-t2 = time.time()
-print(w2)
-print(str(t2)+'\n')
-t2=t2-t1
-print(t2)
+
+
+#w1=correct_word("abandong",lex,ed)
+#print(w1)
+#w2=correct_word("udventur",lex,ed)
+#t2 = time.time()
+#print(w2)
+#print(str(t2)+'\n')
+#t2=t2-t1
+#print(t2)
 #endregion
