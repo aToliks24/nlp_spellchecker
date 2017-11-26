@@ -1,8 +1,9 @@
+import collections
 import re
 import time
 from pickle import dump,load
-from random import choice, randint
-
+from random import choice
+from itertools import product
 Deletion='deletion'
 Insertion='insertion'
 Substitution='substitution'
@@ -109,7 +110,7 @@ def learn_lm_from_string(fstr,n,lm):
 #endregion
 
 # region create_error_distribution
-MAX_MISTAKES_IN_WORD=5
+MAX_MISTAKES_IN_WORD=2
 
 def delition(cp_m_1, cp,mistakesCountDict,charactersCountDict):
     if (cp_m_1 , cp) not in mistakesCountDict[Deletion] or cp_m_1 + cp not in charactersCountDict:
@@ -184,8 +185,7 @@ def initCountDict(countDict):
     alphabet='abcdefghijklmnopqrstuvwxyz\x20\x27\x5e\x24'
     for i in alphabet:
         for j in alphabet:
-            if i!=j:
-                countDict[(i,j)]=1
+            countDict[(i,j)]=1
     return countDict
 
 
@@ -298,7 +298,7 @@ def correct_word(w, word_counts, errors_dist):
     Returns:
         The most probable correction (str).
     """
-    candidates = getCandidates(errors_dist, w, word_counts)
+    candidates,nothing = getCandidates(errors_dist, w, word_counts)
     best=None
     for c in candidates.keys():
         if best==None:
@@ -308,30 +308,28 @@ def correct_word(w, word_counts, errors_dist):
     return best
 
 
-def getCandidates(errors_dist, w, word_counts):
+def getCandidates(errors_dist, w, word_counts,NUMBER_OF_CANDIDATES=5):
     candidates = dict()
-    NUMBER_OF_CANDIDATES=5
+    misCount=dict()
+    CountOfAllWords=sum(word_counts.values())
     for word, count in word_counts.items():
         mis = getMistake((w, word))
         if (len(mis) < MAX_MISTAKES_IN_WORD):
             prob = pow(10, 6)
             for m in mis:
-                prob *= errors_dist[m[0]][m[1]] * count
-            if len(candidates)<NUMBER_OF_CANDIDATES:
-                candidates[word] = prob
-            else:
+                prob *= errors_dist[m[0]][m[1]] * count/CountOfAllWords
+            candidates[word] = prob
+            misCount[word] = len(mis)
+            if len(candidates)>NUMBER_OF_CANDIDATES:
                 mn=min(candidates,key=candidates.get)
-                if candidates[mn]<prob:
-                    del candidates[mn]
-                    candidates[word]=prob
-
-    return candidates
+                del candidates[mn]
+                del misCount[mn]
+    return candidates,misCount
 
 
 #endregion
 
 
-##TODO
 #region generate_text
 
 def getDistributedWords(lexpath):
@@ -452,6 +450,45 @@ def evaluate_text(s,lm):
 ##TODO
 #region correct_sentence
 
+def getWordCount(lm):
+    wc=dict()
+    for k,v in lm.items():
+        for grm,count in v.items():
+            for i in range(count):
+                insertToCountDict(k,wc)
+                for g in grm.split():
+                    insertToCountDict(g,wc)
+    return wc
+
+def flatten(l):
+    for el in l:
+        if isinstance(el, collections.Iterable) and not isinstance(el, (str, bytes)):
+            yield from flatten(el)
+        else:
+            yield el
+
+def getCandidateSentences(candidateWords, c):
+    res=[]
+    sentences=candidateWords[0]
+    del candidateWords[0]
+    while len(candidateWords)>0:
+        sentences=list(product(sentences,candidateWords[0]))
+        for i in range(len(sentences)):
+            sentences[i]=(sentences[i][0][0]+' '+sentences[i][1][0],sentences[i][0][1]+sentences[i][1][1],sentences[i][0][2]+sentences[i][1][2])
+        del candidateWords[0]
+    for s in sentences:
+        if s[1]<=c:
+            res.append(s)
+            if len(res) > 10:
+                mn=min(res,key=lambda x:x[1])
+                res.remove(mn)
+
+
+
+
+    return res
+
+
 def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
     """ Returns the most probable sentence given the specified sentence, language
     model, error distributions, maximal number of suumed erroneous tokens and likelihood for non-error.
@@ -470,7 +507,34 @@ def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
         The most probable sentence (str)
 
     """
-    
+    wc=getWordCount(lm)
+    sentence=[]
+    candidateWords=dict()
+    candWordList=[]
+    for st in linsplitter(s):
+        sentence+=st.split()
+    for w in sentence:
+        candidateWords[w]=[]
+    for w in sentence:
+        candidates,misCount=getCandidates(err_dist,w,wc)
+        candidates[w]=alpha
+        misCount[w]=0
+        for cand,p in candidates.items():
+            if misCount[cand]<=c:
+                candidateWords[w].append((cand,misCount[cand],p))
+    for w in candidateWords.keys():
+        lst=[]
+        for cand in candidateWords[w]:
+            lst.append(cand)
+        candWordList.append(lst)
+
+    sentences=getCandidateSentences(candWordList,c)
+    sentence=("",0)
+    for s in sentences:
+        etp=(s[0],evaluate_text(s[0],lm)*s[1])
+        if etp[1]>sentence[1]:
+            sentence=etp
+    return sentence
 
 
 #endregion
@@ -517,8 +581,9 @@ lex,ed,lm=loadDicts()
 
 
 
-t=getCandidates(ed,'abandoned',lex)
+t=correct_sentence('Hit me Baby one more time',lm,ed)
 print(t)
+
 '''
 sentence1=r'were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning'
 sentence2=r'Al dente, which means “to the tooth” in Italian, is a degree of doneness applied to pasta, rice and vegetables that means the food should be cooked until it retains enough firmness to offer a little resistance to the bite'
