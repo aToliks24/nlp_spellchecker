@@ -1,6 +1,7 @@
 import re
 import time
 from pickle import dump,load
+from random import choice, randint
 
 Deletion='deletion'
 Insertion='insertion'
@@ -84,19 +85,27 @@ def learn_language_model(files, n=3, lm=None):
         fstr=fstr+f.read()
         f.close()
 
-    if lm==None:
-        res=dict()
-    else:
-        res=lm
-    sentences=linsplitter(fstr)
-    for s in sentences:
-        words=[""]*(n-1)+s.split(' ')
-        ngrms=ngrams(words,n)
-        for grm in ngrms:
-            res=addToMlDict(res, grm)
-    for k0 in res.keys(): #smoothing
-            res[k0][1]+=1
+    res = learn_lm_from_string(fstr,  n , lm)
     return res
+
+
+def learn_lm_from_string(fstr,n,lm):
+    if lm == None:
+        res = dict()
+    else:
+        res = lm
+    sentences = linsplitter(fstr)
+    for s in sentences:
+        words = [""] * (n - 1) + s.split(' ')
+        ngrms = ngrams(words, n)
+        for grm in ngrms:
+            res = addToMlDict(res, grm)
+    for k0 in res.keys():  # smoothing
+        for k1 in res[k0].keys():
+            res[k0][k1] += 1
+    return res
+
+
 #endregion
 
 # region create_error_distribution
@@ -273,7 +282,6 @@ def insertToCountDict(key, charactersCountDict):
         charactersCountDict[key] = 1
 # endregion
 
-
 #region correct_word
 def correct_word(w, word_counts, errors_dist):
     """ Returns the most probable correction for the specified word, given the specified prior error distribution.
@@ -302,11 +310,11 @@ def correct_word(w, word_counts, errors_dist):
 
 def getCandidates(errors_dist, w, word_counts):
     candidates = dict()
-    NUMBER_OF_CANDIDATES=3
+    NUMBER_OF_CANDIDATES=5
     for word, count in word_counts.items():
         mis = getMistake((w, word))
         if (len(mis) < MAX_MISTAKES_IN_WORD):
-            prob = pow(10, 5)
+            prob = pow(10, 6)
             for m in mis:
                 prob *= errors_dist[m[0]][m[1]] * count
             if len(candidates)<NUMBER_OF_CANDIDATES:
@@ -334,6 +342,30 @@ def getDistributedWords(lexpath):
     return words
 
 
+def reverseLm(lm):
+    distributedBagOfWords=dict()
+    for k,v in lm.items():
+        for grm,c in v.items():
+            for i in range(c):
+                bow= grm.strip().split()
+                bow.append(k.strip())
+                if bow[0] not in distributedBagOfWords:
+                    distributedBagOfWords[bow[0]] = dict()
+                val=' '.join(bow[1:])
+                if val !='' and val != ' ':
+                    insertToCountDict(' '.join(bow[1:]),distributedBagOfWords[bow[0]])
+    return distributedBagOfWords
+
+def weightedRandom(reverselm,w):
+    if w==None or w not in reverselm.keys():
+        return choice(list(reverselm.keys()))
+    wdct=reverselm[w]
+    words=[]
+    for k,count in wdct.items():
+        for i in range(count):
+            words.append(k)
+    return choice(words)
+
 def generate_text(lm, m=15, w=None):
     """ Returns a text of the specified length, generated according to the
      specified language model using the specified word (if given) as an anchor.
@@ -349,29 +381,45 @@ def generate_text(lm, m=15, w=None):
     lm:=language model, m:=length of generated text
     evaluate_text(s,lm)   s=sentence, lm language model
     """
-    lisOfWords=getDistributedWords(lm)
+    distBoW= reverseLm(lm)
+    sentence=[]
+    sentence.append(w)
+    while len(sentence) <m:
+        last=sentence[-1]
+        sentence+=weightedRandom(distBoW,last).split()
+    return ' '.join(sentence[0:m])
+
 
 
 
 #endregion  #
 
 
-##TODO
+
 #region evaluate_text
 
 
 
 def getSizeOfLM(lm):
-    counter=30
+    counter=10
     n=1
-    for k in lm.keys():
-        sz=len(lm[k].split())
-        if sz>n :
-            n=sz
+    for k0 in lm.keys():
+        for k1 in lm[k0].keys():
+            sz=len(k1.split())
+            if sz>n :
+                n=sz
         counter-=1
         if counter<=0:
             break
-    return n
+    return n+1
+
+
+def countGrm(grm, lm):
+    counter=1##smoothing
+    for k in lm.values():
+        if grm in k.keys():
+            counter+=k[grm]
+    return counter
 
 
 def evaluate_text(s,lm):
@@ -386,12 +434,15 @@ def evaluate_text(s,lm):
         The likelihood of the sentence according to the language model (float).
     """
     n=getSizeOfLM(lm)
-    slm=learn_language_model([s], n)
+    slm=learn_lm_from_string(s, n,None)
     res=1
-    for k,v in slm:
+    for k,v in slm.items():
         if k in lm.keys():
-            res*=v
-    return res;
+            for grm in v.keys():
+                if grm in lm[k].keys():
+                    res*=v[grm]
+            res/=countGrm(grm,lm)
+    return res
 
 
 
@@ -419,7 +470,7 @@ def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
         The most probable sentence (str)
 
     """
-
+    
 
 
 #endregion
@@ -460,12 +511,24 @@ def loadDicts():
     lm = load(flm)
     flm.close()
     return lex,ed,lm
-dumpDicts()
+#dumpDicts()
 
-#lex,ed,lm=loadDicts()
+lex,ed,lm=loadDicts()
 
 
 
+t=getCandidates(ed,'abandoned',lex)
+print(t)
+'''
+sentence1=r'were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning'
+sentence2=r'Al dente, which means “to the tooth” in Italian, is a degree of doneness applied to pasta, rice and vegetables that means the food should be cooked until it retains enough firmness to offer a little resistance to the bite'
+
+res1= evaluate_text(sentence1,lm)
+res2=evaluate_text(sentence2,lm)
+
+
+
+k=0
 
 #w1=correct_word("abandong",lex,ed)
 #print(w1)
@@ -475,4 +538,5 @@ dumpDicts()
 #print(str(t2)+'\n')
 #t2=t2-t1
 #print(t2)
+'''
 #endregion
