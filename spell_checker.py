@@ -1,9 +1,14 @@
 import collections
+from io import open
+import codecs
 import re
 import time
 from pickle import dump,load
 from random import choice
 from itertools import product
+
+
+
 Deletion='deletion'
 Insertion='insertion'
 Substitution='substitution'
@@ -12,15 +17,24 @@ Transposition='transposition'
 
 #region learn_language_model
 
-def linsplitter(files):
+def linsplitter(strs):
+    """ Returns a list of strings contains only characters [a-z\x2e\x27\x20\n]
+
+       Args:
+           strs (str): string of utf8 characters.
+
+       Returns:
+           A list of sentences that was separated by '.' or '\n'
+
+       """
     rgx1 = r'(?<=\w)[\x2e\x2d](?=\w)'  #U.S.A | key-word
     rgx2=r'[^a-zA-Z\x2e\x27\x20\n]'
-    files = re.sub(rgx1, "", files)
-    files=re.sub(rgx2,"",files)
-    files=re.sub("\n+"," ",files)
-    files = re.sub(r"\x20+", "\x20", files)
-    files = re.sub(r"\x2e+", "\n", files)
-    res1=files.splitlines()
+    strs = re.sub(rgx1, "", strs)
+    strs=re.sub(rgx2, "", strs)
+    strs=re.sub("\n+", " ", strs)
+    strs = re.sub(r"\x20+", "\x20", strs)
+    strs = re.sub(r"\x2e+", "\n", strs)
+    res1=strs.splitlines()
     res=[]
     for r in res1:
         res.append(r.lower().strip())
@@ -28,6 +42,16 @@ def linsplitter(files):
 
 
 def ngrams(words, n):
+    """ Returns a list of list of strings with length of n
+
+       Args:
+           words (list): list of strings.
+           n (int): number of words in each sub-list
+
+       Returns:
+           A list of list of strings which contains n words in each sub-list.
+
+       """
     res=[]
     for i in range(len(words)-n+1):
         grm = []
@@ -38,6 +62,16 @@ def ngrams(words, n):
 
 
 def addToMlDict(ngramdict, grm):
+    """ Add another gram to language model dictionary.
+
+       Args:
+           ngramdict (dict): a dictionary of lm you wish to append another gram.
+           grm (list): list of n words to insert the ngramdict.
+
+       Returns:
+           The dictionary of ngramdict with increased count value to the specific gram
+
+       """
     k=grm[-1]
     v=grm[0:-1]
     if k in ngramdict:
@@ -82,15 +116,26 @@ def learn_language_model(files, n=3, lm=None):
     """
     fstr=""
     for p in files:
-        f=open(p,'r',encoding='utf8')
-        fstr=fstr+f.read()
-        f.close()
+        with open(p,'r',encoding='utf8') as f:
+            file=f.read()
+            fstr+=file.encode('utf8')
 
     res = learn_lm_from_string(fstr,  n , lm)
     return res
 
 
 def learn_lm_from_string(fstr,n,lm):
+    """ A sub mudule of  learn_language_model.
+
+       Args:
+           fstr (string): a string to insert to lm.
+           n (ins): number of grams.
+           lm (dict): language model dictionaryas described in learn_language_model.
+
+       Returns:
+           dict: a nested dict {str:{str:int}} of ngrams and their counts.
+
+       """
     if lm == None:
         res = dict()
     else:
@@ -113,21 +158,38 @@ def learn_lm_from_string(fstr,n,lm):
 MAX_MISTAKES_IN_WORD=2
 
 def delition(cp_m_1, cp,mistakesCountDict,charactersCountDict):
-    if (cp_m_1 , cp) not in mistakesCountDict[Deletion] or cp_m_1 + cp not in charactersCountDict:
-        return 0
-    return mistakesCountDict[Deletion][(cp_m_1 , cp)] / charactersCountDict[cp_m_1 + cp]
+    if (cp_m_1 , cp) not in mistakesCountDict[Deletion] :
+        mistakesCountDict[Deletion][cp_m_1]=cp
+    if cp_m_1 + cp not in charactersCountDict:
+        charactersCountDict[cp_m_1 + cp]=1
+    return float(mistakesCountDict[Deletion][(cp_m_1 , cp)]) / charactersCountDict[cp_m_1 + cp]
+
+
+
 def insertion(cp_m_1, tp,mistakesCountDict,charactersCountDict):
-    if (cp_m_1 , tp) not in mistakesCountDict[Deletion] or cp_m_1 not in charactersCountDict:
-        return 0
-    return mistakesCountDict[Insertion][(cp_m_1 , tp)] / charactersCountDict[cp_m_1]
+    if (cp_m_1 , tp) not in mistakesCountDict[Insertion]:
+        mistakesCountDict[Insertion][cp_m_1]=tp
+    if cp_m_1 not in charactersCountDict:
+        charactersCountDict[cp_m_1]=1
+    return float(mistakesCountDict[Insertion][(cp_m_1 , tp)] )/ charactersCountDict[cp_m_1]
+
+
+
 def substitution(tp,cp,mistakesCountDict,charactersCountDict):
-    if (tp , cp) not in mistakesCountDict[Deletion] or cp not in charactersCountDict:
-        return 0
-    return mistakesCountDict[Substitution][(tp , cp)] / charactersCountDict[cp]
+    if (tp , cp) not in mistakesCountDict[Substitution] :
+        mistakesCountDict[Substitution][tp]=cp
+    if cp not in charactersCountDict:
+        charactersCountDict[cp]=1
+    return float(mistakesCountDict[Substitution][(tp , cp)]) / charactersCountDict[cp]
+
+
+
 def transposition(cp,cp_p_1,mistakesCountDict,charactersCountDict):
-    if (cp , cp_p_1) not in mistakesCountDict[Deletion] or cp + cp_p_1 not in charactersCountDict:
-        return 0
-    return mistakesCountDict[Transposition][(cp,cp_p_1)] / charactersCountDict[cp+cp_p_1]
+    if (cp , cp_p_1) not in mistakesCountDict[Transposition]:
+        mistakesCountDict[Transposition][cp]=cp_p_1
+    if cp + cp_p_1 not in charactersCountDict:
+        charactersCountDict[cp+cp_p_1]=1
+    return float(mistakesCountDict[Transposition][(cp,cp_p_1)] )/ charactersCountDict[cp+cp_p_1]
 
 funcDict={Insertion:insertion,Deletion:delition,Substitution:substitution,Transposition:transposition}
 
@@ -160,7 +222,7 @@ def recGetMistake(misake,mi,word,wi,i):
             return res
     elif mis[0]==tru[0]:
             return recGetMistake(misake,mi+1,word,wi+1,i)
-    else: #check errorType
+    else:
         subslist=[(Substitution,(tru[0],mis[0]))]+recGetMistake(misake,mi+1,word,wi+1,i+1)
         inserlist=[(Insertion,(word[wi-1],mis[0]))]+recGetMistake(misake,mi+1,word,wi,i+1)
         dellist=[(Deletion,(word[wi-1],mis[0]))]+recGetMistake(misake,mi,word,wi+1,i+1)
@@ -229,7 +291,7 @@ def create_error_distribution(errors_file, lexicon):
 
 
     f=open(errors_file,'r',encoding='utf8')
-    wholeFile=f.read()
+    wholeFile=f.read().encode('utf8')
     f.close()
     wholeFile = normalizeText(wholeFile)
     separated = errFileToTupleList(wholeFile)
@@ -315,7 +377,7 @@ def getCandidates(errors_dist, w, word_counts,NUMBER_OF_CANDIDATES=5):
     for word, count in word_counts.items():
         mis = getMistake((w, word))
         if (len(mis) < MAX_MISTAKES_IN_WORD):
-            prob = pow(10, 6)
+            prob = 1
             for m in mis:
                 prob *= errors_dist[m[0]][m[1]] * count/CountOfAllWords
             candidates[word] = prob
@@ -381,6 +443,8 @@ def generate_text(lm, m=15, w=None):
     """
     distBoW= reverseLm(lm)
     sentence=[]
+    if w==None:
+        w=choice(list(distBoW.keys()))
     sentence.append(w)
     while len(sentence) <m:
         last=sentence[-1]
@@ -427,13 +491,12 @@ def evaluate_text(s,lm):
     Args:
         s (str): the sentence to evaluate.
         lm (dict): the language model to evaluate the sentence by.
-    🐻🐼🐰🦃
     Returns:
         The likelihood of the sentence according to the language model (float).
     """
     n=getSizeOfLM(lm)
     slm=learn_lm_from_string(s, n,None)
-    res=1
+    res=1.0
     for k,v in slm.items():
         if k in lm.keys():
             for grm in v.keys():
@@ -447,7 +510,7 @@ def evaluate_text(s,lm):
 
 #endregion
 
-##TODO
+
 #region correct_sentence
 
 def getWordCount(lm):
@@ -460,12 +523,7 @@ def getWordCount(lm):
                     insertToCountDict(g,wc)
     return wc
 
-def flatten(l):
-    for el in l:
-        if isinstance(el, collections.Iterable) and not isinstance(el, (str, bytes)):
-            yield from flatten(el)
-        else:
-            yield el
+
 
 def getCandidateSentences(candidateWords, c):
     res=[]
@@ -482,10 +540,6 @@ def getCandidateSentences(candidateWords, c):
             if len(res) > 10:
                 mn=min(res,key=lambda x:x[1])
                 res.remove(mn)
-
-
-
-
     return res
 
 
@@ -522,7 +576,7 @@ def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
         for cand,p in candidates.items():
             if misCount[cand]<=c:
                 candidateWords[w].append((cand,misCount[cand],p))
-    for w in candidateWords.keys():
+    for w in sentence:
         lst=[]
         for cand in candidateWords[w]:
             lst.append(cand)
@@ -543,8 +597,8 @@ def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
 
 t1 = time.time()
 print(t1)
-#path=r'C:\Users\tolik\Desktop\wikipedia_common_misspellings.txt'
-#lex=r'C:\Users\tolik\Desktop\sharlock.txt'
+
+#lexpath=r'/Users/toliks/Desktop/trump_historical_tweets.txt'
 lexpath=r'/Users/toliks/Desktop/big.txt'
 path=r'/Users/toliks/Desktop/wikipedia_common_misspellings.txt'
 
@@ -579,29 +633,12 @@ def loadDicts():
 
 lex,ed,lm=loadDicts()
 
-
-
-t=correct_sentence('Hit me Baby one more time',lm,ed)
+#lex = getDistributedWords([lexpath])
+#ed=create_error_distribution(path,lex)
+#
+#t=correct_sentence('Hit me Baby one more time',lm,ed)
+t=generate_text(lm,30)
+k=0
 print(t)
 
-'''
-sentence1=r'were abhorrent to his cold, precise but admirably balanced mind. He was, I take it, the most perfect reasoning'
-sentence2=r'Al dente, which means “to the tooth” in Italian, is a degree of doneness applied to pasta, rice and vegetables that means the food should be cooked until it retains enough firmness to offer a little resistance to the bite'
-
-res1= evaluate_text(sentence1,lm)
-res2=evaluate_text(sentence2,lm)
-
-
-
-k=0
-
-#w1=correct_word("abandong",lex,ed)
-#print(w1)
-#w2=correct_word("udventur",lex,ed)
-#t2 = time.time()
-#print(w2)
-#print(str(t2)+'\n')
-#t2=t2-t1
-#print(t2)
-'''
 #endregion
