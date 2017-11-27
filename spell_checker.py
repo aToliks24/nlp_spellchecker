@@ -1,6 +1,4 @@
-import collections
 from io import open
-import codecs
 import re
 import time
 from pickle import dump,load
@@ -75,7 +73,7 @@ def addToMlDict(ngramdict, grm):
     k=grm[-1]
     v=grm[0:-1]
     if k in ngramdict:
-        insertToCountDict(' '.join(v).strip(),ngramdict[k])
+        insertToCountDict(' '.join(v).strip(), ngramdict[k])
     else:
         ngramdict[k]=dict()
         ngramdict[k][' '.join(v)]=1
@@ -157,6 +155,23 @@ def learn_lm_from_string(fstr,n,lm):
 # region create_error_distribution
 MAX_MISTAKES_IN_WORD=2
 
+
+def calculateProbability(type,a,b,mistakesCountDict,charactersCountDict):
+    """ Returns the probability of an error based on noisy channel language model.
+        it uses different functions below based on the error type.
+
+       Args:
+           type (str): type of error (delition/insertion/substitution/transposition).
+           a,b (int): (arguments needed for noisy chanel probabilities , each type has different arguments.
+           mistakesCountDict (dict): count of each mistake from the common mispelings.
+           charactersCountDict(dict): number of each character in the lm.
+
+       Returns:
+           A probability of the error.
+
+       """
+    return funcDict[type](a,b,mistakesCountDict,charactersCountDict)
+
 def delition(cp_m_1, cp,mistakesCountDict,charactersCountDict):
     if (cp_m_1 , cp) not in mistakesCountDict[Deletion] :
         mistakesCountDict[Deletion][cp_m_1]=cp
@@ -193,17 +208,39 @@ def transposition(cp,cp_p_1,mistakesCountDict,charactersCountDict):
 
 funcDict={Insertion:insertion,Deletion:delition,Substitution:substitution,Transposition:transposition}
 
-def calculateProbability(type,a,b,mistakesCountDict,charactersCountDict):
-    return funcDict[type](a,b,mistakesCountDict,charactersCountDict)
+
+
 
 def getMistake(tup):
+    """Wrapper of recGetMistake recursive function.
+
+       Args:
+           tup (tupple): str,str of a word and a misspelling of it.
+
+       Returns:
+           list of tupples , each tupple has a key of an edit-type-error string and value of the tow characters involved in the edit-error.
+
+       """
     mis='^'+tup[0]
     tru='^'+tup[1]
-    lst=recGetMistake(mis,1,tru,1,0)#list[tup(errTypeList, errTupList)*]
+    lst=recGetMistake(mis,1,tru,1,0)
     return lst
 
 
 def recGetMistake(misake,mi,word,wi,i):
+    """ Get the mistake types of by Levinstein of a tupple.
+
+       Args:
+           mistake (str): string with an edit error\s.
+           mi (int): a position of the algorithm in mistake word.
+           word (str): the correct word of the mistake.
+           wi (int): a position of the algorithm in correct word.
+           i (int): the number of mistakes till now.
+
+       Returns:
+           list of tupples , each tupple has a key of an edit-type-error string and value of the tow characters involved in the edit-error.
+
+       """
     mis=misake[mi:]
     tru=word[wi:]
     if i>MAX_MISTAKES_IN_WORD :
@@ -244,6 +281,15 @@ def recGetMistake(misake,mi,word,wi,i):
 
 
 def initCountDict(countDict):
+    """ Initiates a dictionary of str,count.
+
+       Args:
+           countDict (dict): a dictionary you want to initiate with 1 for each combination in the alphabet.
+
+       Returns:
+           A dictionary initiated with 1 for each combination in the alphabet.
+
+       """
     alphabet='abcdefghijklmnopqrstuvwxyz\x20\x27\x5e\x24'
     for i in alphabet:
         for j in alphabet:
@@ -301,13 +347,13 @@ def create_error_distribution(errors_file, lexicon):
         for curr in errTups:
             errTup=curr[1]
             errType=curr[0]
-            insertToCountDict(errTup,mistakesCountDict[errType])
+            insertToCountDict(errTup, mistakesCountDict[errType])
     for word in lexicon.keys():
         for c in word:
             insertToCountDict(c, charactersCountDict)
         for i in range(len(word)-1):
             c=word[i]+word[i+1]
-            insertToCountDict(c,charactersCountDict)
+            insertToCountDict(c, charactersCountDict)
     for etype in mistakesCountDict.keys():
         for tup in mistakesCountDict[etype]:
             p=calculateProbability(etype,tup[0],tup[1],mistakesCountDict,charactersCountDict)
@@ -316,6 +362,15 @@ def create_error_distribution(errors_file, lexicon):
 
 
 def normalizeText(text):
+    """ Removes any character not in [a-zA-Z\x20\x3e\x2d\n]
+
+        Args:
+            text (str): string of a long text.
+
+        Returns:
+            A normalized string to work with.
+
+        """
     text = text.lower()
     text = re.sub(r'[^a-zA-Z\x20\x3e\x2d\n]', "", text)
     text = text.split('\n')
@@ -323,6 +378,15 @@ def normalizeText(text):
 
 
 def errFileToTupleList(wholeFile):
+    """ parses an error file based on wikipedia file
+
+        Args:
+            wholeFile (str): string of a file based on (word1->word2\n)+ pattern.
+
+        Returns:
+            A list of tupples str,str of the two words around the '->'.
+
+        """
     separated = []
     for str in wholeFile:
         if '->' not in str:
@@ -337,11 +401,18 @@ def errFileToTupleList(wholeFile):
     return separated
 
 
-def insertToCountDict(key, charactersCountDict):
-    if key in charactersCountDict:
-        charactersCountDict[key] += 1
+def insertToCountDict(key, countDict):
+    """ Increment a value in a dictionary
+
+          Args:
+              key (str): the string-key which value you want to increase.
+              countDict (dict): a dictionary of str,int
+
+          """
+    if key in countDict:
+        countDict[key] += 1
     else:
-        charactersCountDict[key] = 1
+        countDict[key] = 1
 # endregion
 
 #region correct_word
@@ -371,6 +442,22 @@ def correct_word(w, word_counts, errors_dist):
 
 
 def getCandidates(errors_dist, w, word_counts,NUMBER_OF_CANDIDATES=5):
+    """ gets a candidates of one word based on the noisy channel model.
+
+          Args:
+              errors_dist (dict): a dictionary of {str:dict} representing the error
+                            distribution of each error type (as returned by
+                            create_error_distribution() ).
+              w (str): a word to correct
+              word_counts (dict): a dictionary of {str:count} containing the
+                            counts  of uniqie words (from previously loaded
+                             corpora).
+              NUMBER_OF_CANDIDATES (str): max number of candidates.
+
+          Returns:
+              returns a list of candidates of w and a list of edit-distances of these words.
+
+          """
     candidates = dict()
     misCount=dict()
     CountOfAllWords=sum(word_counts.values())
@@ -391,15 +478,8 @@ def getCandidates(errors_dist, w, word_counts,NUMBER_OF_CANDIDATES=5):
 
 #endregion
 
-
 #region generate_text
 
-def getDistributedWords(lexpath):
-    lm=learn_language_model(lexpath,n=1)
-    words=dict()
-    for word in lm.keys():
-        words[word]=lm[word][""]
-    return words
 
 
 def reverseLm(lm):
@@ -413,7 +493,7 @@ def reverseLm(lm):
                     distributedBagOfWords[bow[0]] = dict()
                 val=' '.join(bow[1:])
                 if val !='' and val != ' ':
-                    insertToCountDict(' '.join(bow[1:]),distributedBagOfWords[bow[0]])
+                    insertToCountDict(' '.join(bow[1:]), distributedBagOfWords[bow[0]])
     return distributedBagOfWords
 
 def weightedRandom(reverselm,w):
@@ -456,13 +536,18 @@ def generate_text(lm, m=15, w=None):
 
 #endregion  #
 
-
-
 #region evaluate_text
 
 
 
 def getSizeOfLM(lm):
+    """ Returns the number of words in the text which the lm built from.
+
+      Args:
+          lm (dict): the language model to evaluate the sentence by.
+      Returns:
+          Number of words in the text that the lm was built from.
+      """
     counter=10
     n=1
     for k0 in lm.keys():
@@ -474,14 +559,6 @@ def getSizeOfLM(lm):
         if counter<=0:
             break
     return n+1
-
-
-def countGrm(grm, lm):
-    counter=1##smoothing
-    for k in lm.values():
-        if grm in k.keys():
-            counter+=k[grm]
-    return counter
 
 
 def evaluate_text(s,lm):
@@ -502,7 +579,11 @@ def evaluate_text(s,lm):
             for grm in v.keys():
                 if grm in lm[k].keys():
                     res*=v[grm]
-            res/=countGrm(grm,lm)
+            counter = 1  ##smoothing
+            for k in lm.values():
+                if grm in k.keys():
+                    counter += k[grm]
+            res/=counter
     return res
 
 
@@ -510,22 +591,35 @@ def evaluate_text(s,lm):
 
 #endregion
 
-
 #region correct_sentence
 
 def getWordCount(lm):
+    """ Returns a dictionary of lexicon.
+
+    Args:
+        lm (dict): the language model built by the text.
+    Returns:
+        A dictionary of str,int any word in the model and the nu,ber of times it appears in the text.
+    """
     wc=dict()
     for k,v in lm.items():
         for grm,count in v.items():
             for i in range(count):
-                insertToCountDict(k,wc)
+                insertToCountDict(k, wc)
                 for g in grm.split():
-                    insertToCountDict(g,wc)
+                    insertToCountDict(g, wc)
     return wc
 
 
 
 def getCandidateSentences(candidateWords, c):
+    """ Returns all candidate sentences with total edit distance of c.
+
+    Args:
+        candidateWords (list): a list of lists of tuppels. each tupple has 3 values (word,edit_distance, noisy channel probability), max edit-distance.
+    Returns:
+        A list of candidates with max edit-distance of c.
+    """
     res=[]
     sentences=candidateWords[0]
     del candidateWords[0]
@@ -588,7 +682,7 @@ def correct_sentence(s, lm, err_dist,c=2, alpha=0.95):
         etp=(s[0],evaluate_text(s[0],lm)*s[1])
         if etp[1]>sentence[1]:
             sentence=etp
-    return sentence
+    return sentence[0]
 
 
 #endregion
@@ -602,6 +696,20 @@ print(t1)
 lexpath=r'/Users/toliks/Desktop/big.txt'
 path=r'/Users/toliks/Desktop/wikipedia_common_misspellings.txt'
 
+def getDistributedWords(lexpath):
+    """ Returns a dictionary of lexicon.
+
+    Args:
+        s (str): the sentence to evaluate.
+        lm (dict): the language model to evaluate the sentence by.
+    Returns:
+        The likelihood of the sentence according to the language model (float).
+    """
+    lm=learn_language_model(lexpath,n=1)
+    words=dict()
+    for word in lm.keys():
+        words[word]=lm[word][""]
+    return words
 
 def dumpDicts():
     lm = learn_language_model([lexpath], n=3)
@@ -636,9 +744,9 @@ lex,ed,lm=loadDicts()
 #lex = getDistributedWords([lexpath])
 #ed=create_error_distribution(path,lex)
 #
-#t=correct_sentence('Hit me Baby one more time',lm,ed)
-t=generate_text(lm,30)
+t=correct_sentence('kill all of the stupid fanatics',lm,ed)
+z=generate_text(lm,30)
 k=0
 print(t)
-
+print(z)
 #endregion
